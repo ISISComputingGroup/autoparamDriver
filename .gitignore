@@ -8,10 +8,10 @@ O.*/
 .reuse
 compile_commands.json
 envPaths
-bin/
-dbd/
-db/
-lib/
-include/
+/bin/
+/dbd/
+/db/
+/lib/
+/include/
 docs/build/*
 docs/doxygen/*

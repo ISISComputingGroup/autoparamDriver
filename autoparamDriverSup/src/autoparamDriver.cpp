@@ -415,6 +415,7 @@ template <typename T> bool Driver::hasReadHandler(int index) {
 }
 
 template <typename T> bool Driver::hasWriteHandler(int index) {
+    epicsGuard<epicsMutex> _lock(m_params_lock);
     return getWriteHandler<T>(m_params.at(index)->function()) != NULL;
 }
 

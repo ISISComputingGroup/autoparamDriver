@@ -723,14 +723,19 @@ asynStatus Driver::registerInterrupt(void *drvPvt, asynUser *pasynUser,
                                      void *callback, void *userPvt,
                                      void **registrarPvt) {
 
-    if (drvPvt != g_driver) return asynSuccess;
-    Driver *self = static_cast<Driver *>(drvPvt);
-    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
-
     // I hate doing type erasure like this, but there aren't sane options ...
     typedef asynStatus (*RegisterIntrFunc)(void *drvPvt, asynUser *pasynUser,
                                            void *callback, void *userPvt,
                                            void **registrarPvt);
+    if (drvPvt != g_driver) {
+        RegisterIntrFunc original = reinterpret_cast<RegisterIntrFunc>(
+            g_driver->m_originalIntrRegister.at(AsynType<T>::value).first);        
+        return original(drvPvt, pasynUser, callback, userPvt, registrarPvt);
+    }
+
+    Driver *self = static_cast<Driver *>(drvPvt);
+    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
+
     RegisterIntrFunc original = reinterpret_cast<RegisterIntrFunc>(
         self->m_originalIntrRegister.at(AsynType<T>::value).first);
     asynStatus status =
@@ -770,14 +775,20 @@ asynStatus Driver::registerInterrupt(void *drvPvt, asynUser *pasynUser,
 template <typename T>
 asynStatus Driver::cancelInterrupt(void *drvPvt, asynUser *pasynUser,
                                    void *registrarPvt) {
-    // 
-    if (drvPvt != g_driver) return asynSuccess;
-    Driver *self = static_cast<Driver *>(drvPvt);
-    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
 
     // I hate doing type erasure like this, but there aren't sane options ...
     typedef asynStatus (*CancelIntrFunc)(void *drvPvt, asynUser *pasynUser,
                                          void *registrarPvt);
+
+    if (drvPvt != g_driver) {
+        CancelIntrFunc original = reinterpret_cast<CancelIntrFunc>(
+            g_driver->m_originalIntrRegister.at(AsynType<T>::value).second);
+        return original(drvPvt, pasynUser, registrarPvt);
+    }
+
+    Driver *self = static_cast<Driver *>(drvPvt);
+    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
+
     CancelIntrFunc original = reinterpret_cast<CancelIntrFunc>(
         self->m_originalIntrRegister.at(AsynType<T>::value).second);
     asynStatus status = original(drvPvt, pasynUser, registrarPvt);
@@ -826,15 +837,21 @@ asynStatus Driver::registerInterruptDigital(void *drvPvt, asynUser *pasynUser,
                                             void *callback, void *userPvt,
                                             epicsUInt32 mask,
                                             void **registrarPvt) {
-    if (drvPvt != g_driver) return asynSuccess;
-    typedef epicsUInt32 T;
-    Driver *self = static_cast<Driver *>(drvPvt);
-    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
-
     // UInt32Digital has a signature different from other registrars.
     typedef asynStatus (*RegisterIntrFunc)(
         void *drvPvt, asynUser *pasynUser, void *callback, void *userPvt,
         epicsUInt32 mask, void **registrarPvt);
+    typedef epicsUInt32 T;
+
+    if (drvPvt != g_driver) {
+        RegisterIntrFunc original = reinterpret_cast<RegisterIntrFunc>(
+            g_driver->m_originalIntrRegister.at(AsynType<T>::value).first);
+        return original(drvPvt, pasynUser, callback, userPvt, mask, registrarPvt);
+    }
+
+    Driver *self = static_cast<Driver *>(drvPvt);
+    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
+
     RegisterIntrFunc original = reinterpret_cast<RegisterIntrFunc>(
         self->m_originalIntrRegister.at(AsynType<T>::value).first);
     asynStatus status =

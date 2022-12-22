@@ -88,6 +88,8 @@ static void addInitHook(Driver *driver, DriverOpts::InitHook hook) {
     allInitHooks[driver] = hook;
 }
 
+static Driver* g_driver;
+
 Driver::Driver(const char *portName, const DriverOpts &params)
     : asynPortDriver(portName, 1, params.interfaceMask, params.interruptMask,
                      params.asynFlags, params.autoConnect, params.priority,
@@ -100,8 +102,9 @@ Driver::Driver(const char *portName, const DriverOpts &params)
     if (params.initHook) {
         addInitHook(this, params.initHook);
     }
-
+    g_driver = this;
     installInterruptRegistrars();
+
 }
 
 Driver::~Driver() {
@@ -719,6 +722,8 @@ template <typename T>
 asynStatus Driver::registerInterrupt(void *drvPvt, asynUser *pasynUser,
                                      void *callback, void *userPvt,
                                      void **registrarPvt) {
+
+    if (drvPvt != g_driver) return asynSuccess;
     Driver *self = static_cast<Driver *>(drvPvt);
     DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
 
@@ -765,6 +770,8 @@ asynStatus Driver::registerInterrupt(void *drvPvt, asynUser *pasynUser,
 template <typename T>
 asynStatus Driver::cancelInterrupt(void *drvPvt, asynUser *pasynUser,
                                    void *registrarPvt) {
+    // 
+    if (drvPvt != g_driver) return asynSuccess;
     Driver *self = static_cast<Driver *>(drvPvt);
     DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
 
@@ -819,6 +826,7 @@ asynStatus Driver::registerInterruptDigital(void *drvPvt, asynUser *pasynUser,
                                             void *callback, void *userPvt,
                                             epicsUInt32 mask,
                                             void **registrarPvt) {
+    if (drvPvt != g_driver) return asynSuccess;
     typedef epicsUInt32 T;
     Driver *self = static_cast<Driver *>(drvPvt);
     DeviceVariable *var = self->deviceVariableFromUser(pasynUser);

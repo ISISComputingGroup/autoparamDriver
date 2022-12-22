@@ -521,6 +521,7 @@ class epicsShareClass Driver : public asynPortDriver {
     DriverOpts opts;
 
     typedef std::map<int, DeviceVariable *> ParamMap;
+    mutable epicsMutex m_params_lock;
     ParamMap m_params;
     std::map<std::string, asynParamType> m_functionTypes;
 

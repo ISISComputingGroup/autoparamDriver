@@ -105,6 +105,7 @@ Driver::Driver(const char *portName, const DriverOpts &params)
 }
 
 Driver::~Driver() {
+    epicsGuard<epicsMutex> _lock(m_params_lock);
     for (ParamMap::iterator i = m_params.begin(), end = m_params.end();
          i != end; ++i) {
         delete i->second;
@@ -159,6 +160,7 @@ asynStatus Driver::drvUserCreate(asynUser *pasynUser, const char *reason,
     }
 
     // Let's check if we already have the variable.
+    epicsGuard<epicsMutex> _lock(m_params_lock);
     ParamMap::iterator varIter =
         std::find_if(m_params.begin(), m_params.end(), cmpDeviceAddress(addr));
     if (varIter != m_params.end()) {
@@ -212,6 +214,7 @@ void Driver::handleResultStatus(asynUser *pasynUser, ResultBase const &result) {
 }
 
 DeviceVariable *Driver::deviceVariableFromUser(asynUser *pasynUser) {
+    epicsGuard<epicsMutex> _lock(m_params_lock);
     try {
         return m_params.at(pasynUser->reason);
     } catch (std::out_of_range const &) {
@@ -234,6 +237,7 @@ DeviceVariable *Driver::deviceVariableFromUser(asynUser *pasynUser) {
 // that m_params is not supposed to change at runtime. I wish more functions
 // could be made const-correct ...
 std::vector<DeviceVariable *> Driver::getAllVariables() const {
+    epicsGuard<epicsMutex> _lock(m_params_lock);
     std::vector<DeviceVariable *> pvs;
     pvs.reserve(m_params.size());
     for (ParamMap::const_iterator i = m_params.begin(), end = m_params.end();
@@ -401,10 +405,12 @@ bool Driver::checkHandlersVerbosely(std::string const &function) {
 }
 
 bool Driver::hasParam(int index) {
+    epicsGuard<epicsMutex> _lock(m_params_lock);
     return m_params.find(index) != m_params.end();
 }
 
 template <typename T> bool Driver::hasReadHandler(int index) {
+    epicsGuard<epicsMutex> _lock(m_params_lock);
     return getReadHandler<T>(m_params.at(index)->function()) != NULL;
 }
 

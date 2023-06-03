@@ -9,12 +9,7 @@
 #include <epicsExit.h>
 #include <initHooks.h>
 
-#include <epicsExport.h>
 #include "autoparamDriver.h"
-
-#ifdef _MSC_VER
-#define __attribute__(x)
-#endif /* ifdef _MSC_VER */
 
 namespace Autoparam {
 
@@ -82,13 +77,10 @@ static void runInitHooks(initHookState state) {
 }
 
 static void addInitHook(Driver *driver, DriverOpts::InitHook hook) {
-    static int const isRegistered __attribute__((unused)) =
-        initHookRegister(runInitHooks);
-
+    static int const isRegistered = initHookRegister(runInitHooks);
+    (void)isRegistered;
     allInitHooks[driver] = hook;
 }
-
-static Driver* g_driver;
 
 Driver::Driver(const char *portName, const DriverOpts &params)
     : asynPortDriver(portName, 1, params.interfaceMask, params.interruptMask,
@@ -102,15 +94,19 @@ Driver::Driver(const char *portName, const DriverOpts &params)
     if (params.initHook) {
         addInitHook(this, params.initHook);
     }
-    g_driver = this;
-    installInterruptRegistrars();
 
+    installInterruptRegistrars();
 }
 
 Driver::~Driver() {
     for (ParamMap::iterator i = m_params.begin(), end = m_params.end();
          i != end; ++i) {
         delete i->second;
+    }
+
+    while (!m_hijackedInterfaces.empty()) {
+        free(m_hijackedInterfaces.back());
+        m_hijackedInterfaces.pop_back();
     }
 }
 
@@ -304,9 +300,13 @@ static void assignPtr(Ptr *&ptr, Other *other) {
 }
 
 template <typename Iface, typename HType>
-void Driver::installAnInterruptRegistrar(void *piface) {
+void Driver::installAnInterruptRegistrar(void *&piface) {
     // I hate doing type erasure like this, but there aren't sane options ...
-    Iface *iface = static_cast<Iface *>(piface);
+    Iface *iface = static_cast<Iface *>(malloc(sizeof(Iface)));
+    *iface = *static_cast<Iface *>(piface);
+    piface = iface;
+    m_hijackedInterfaces.push_back(iface);
+
     VoidFuncPtr reg =
         reinterpret_cast<VoidFuncPtr>(iface->registerInterruptUser);
     VoidFuncPtr canc =
@@ -320,9 +320,14 @@ void Driver::installAnInterruptRegistrar(void *piface) {
 // do a different cast.
 template <>
 void Driver::installAnInterruptRegistrar<asynUInt32Digital, epicsUInt32>(
-    void *piface) {
+    void *&piface) {
     // I hate doing type erasure like this, but there aren't sane options ...
-    asynUInt32Digital *iface = static_cast<asynUInt32Digital *>(piface);
+    typedef asynUInt32Digital Iface;
+    Iface *iface = static_cast<Iface *>(malloc(sizeof(Iface)));
+    *iface = *static_cast<Iface *>(piface);
+    piface = iface;
+    m_hijackedInterfaces.push_back(iface);
+
     VoidFuncPtr reg =
         reinterpret_cast<VoidFuncPtr>(iface->registerInterruptUser);
     VoidFuncPtr canc =
@@ -582,53 +587,61 @@ void Driver::registerHandlers(std::string const &function,
     m_functionTypes[function] = Handlers<T>::type;
 }
 
-template epicsShareFunc void
-Driver::registerHandlers<epicsInt32>(std::string const &function,
+template AUTOPARAMDRIVER_API void epicsStdCall
+Driver::registerHandlers<epicsInt32>(std::string  const &function,
                                      Handlers<epicsInt32>::ReadHandler reader,
                                      Handlers<epicsInt32>::WriteHandler writer,
                                      InterruptRegistrar intrRegistrar);
-template epicsShareFunc void
-Driver::registerHandlers<epicsInt64>(std::string const &function,
+template AUTOPARAMDRIVER_API void epicsStdCall
+Driver::registerHandlers<epicsInt64>(std::string  const &function,
                                      Handlers<epicsInt64>::ReadHandler reader,
                                      Handlers<epicsInt64>::WriteHandler writer,
                                      InterruptRegistrar intrRegistrar);
-template epicsShareFunc void Driver::registerHandlers<epicsFloat64>(
+template AUTOPARAMDRIVER_API void epicsStdCall
+Driver::registerHandlers<epicsFloat64>(
     std::string const &function, Handlers<epicsFloat64>::ReadHandler reader,
     Handlers<epicsFloat64>::WriteHandler writer,
     InterruptRegistrar intrRegistrar);
-template epicsShareFunc void Driver::registerHandlers<epicsUInt32>(
+template AUTOPARAMDRIVER_API void epicsStdCall
+Driver::registerHandlers<epicsUInt32>(
     std::string const &function, Handlers<epicsUInt32>::ReadHandler reader,
     Handlers<epicsUInt32>::WriteHandler writer,
     InterruptRegistrar intrRegistrar);
-template epicsShareFunc void Driver::registerHandlers<Octet>(
+template AUTOPARAMDRIVER_API void epicsStdCall Driver::registerHandlers<Octet>(
     std::string const &function, Handlers<Octet>::ReadHandler reader,
     Handlers<Octet>::WriteHandler writer, InterruptRegistrar intrRegistrar);
-template epicsShareFunc void Driver::registerHandlers<Array<epicsInt8> >(
+template AUTOPARAMDRIVER_API void epicsStdCall
+Driver::registerHandlers<Array<epicsInt8> >(
     std::string const &function,
     Handlers<Array<epicsInt8> >::ReadHandler reader,
     Handlers<Array<epicsInt8> >::WriteHandler writer,
     InterruptRegistrar intrRegistrar);
-template epicsShareFunc void Driver::registerHandlers<Array<epicsInt16> >(
+template AUTOPARAMDRIVER_API void epicsStdCall
+Driver::registerHandlers<Array<epicsInt16> >(
     std::string const &function,
     Handlers<Array<epicsInt16> >::ReadHandler reader,
     Handlers<Array<epicsInt16> >::WriteHandler writer,
     InterruptRegistrar intrRegistrar);
-template epicsShareFunc void Driver::registerHandlers<Array<epicsInt32> >(
+template AUTOPARAMDRIVER_API void epicsStdCall
+Driver::registerHandlers<Array<epicsInt32> >(
     std::string const &function,
     Handlers<Array<epicsInt32> >::ReadHandler reader,
     Handlers<Array<epicsInt32> >::WriteHandler writer,
     InterruptRegistrar intrRegistrar);
-template epicsShareFunc void Driver::registerHandlers<Array<epicsInt64> >(
+template AUTOPARAMDRIVER_API void epicsStdCall
+Driver::registerHandlers<Array<epicsInt64> >(
     std::string const &function,
     Handlers<Array<epicsInt64> >::ReadHandler reader,
     Handlers<Array<epicsInt64> >::WriteHandler writer,
     InterruptRegistrar intrRegistrar);
-template epicsShareFunc void Driver::registerHandlers<Array<epicsFloat32> >(
+template AUTOPARAMDRIVER_API void epicsStdCall
+Driver::registerHandlers<Array<epicsFloat32> >(
     std::string const &function,
     Handlers<Array<epicsFloat32> >::ReadHandler reader,
     Handlers<Array<epicsFloat32> >::WriteHandler writer,
     InterruptRegistrar intrRegistrar);
-template epicsShareFunc void Driver::registerHandlers<Array<epicsFloat64> >(
+template AUTOPARAMDRIVER_API void epicsStdCall
+Driver::registerHandlers<Array<epicsFloat64> >(
     std::string const &function,
     Handlers<Array<epicsFloat64> >::ReadHandler reader,
     Handlers<Array<epicsFloat64> >::WriteHandler writer,
@@ -647,25 +660,35 @@ asynStatus Driver::doCallbacksArray(DeviceVariable const &var, Array<T> &value,
     return doCallbacksArrayDispatch(var.asynIndex(), value);
 }
 
-template epicsShareFunc asynStatus
+template AUTOPARAMDRIVER_API asynStatus epicsStdCall
 Driver::doCallbacksArray<epicsInt8>(DeviceVariable const &var,
                                     Array<epicsInt8> &value, asynStatus status,
                                     int alarmStatus, int alarmSeverity);
-template epicsShareFunc asynStatus Driver::doCallbacksArray<epicsInt16>(
-    DeviceVariable const &var, Array<epicsInt16> &value, asynStatus status,
-    int alarmStatus, int alarmSeverity);
-template epicsShareFunc asynStatus Driver::doCallbacksArray<epicsInt32>(
-    DeviceVariable const &var, Array<epicsInt32> &value, asynStatus status,
-    int alarmStatus, int alarmSeverity);
-template epicsShareFunc asynStatus Driver::doCallbacksArray<epicsInt64>(
-    DeviceVariable const &var, Array<epicsInt64> &value, asynStatus status,
-    int alarmStatus, int alarmSeverity);
-template epicsShareFunc asynStatus Driver::doCallbacksArray<epicsFloat32>(
-    DeviceVariable const &var, Array<epicsFloat32> &value, asynStatus status,
-    int alarmStatus, int alarmSeverity);
-template epicsShareFunc asynStatus Driver::doCallbacksArray<epicsFloat64>(
-    DeviceVariable const &var, Array<epicsFloat64> &value, asynStatus status,
-    int alarmStatus, int alarmSeverity);
+template AUTOPARAMDRIVER_API asynStatus epicsStdCall
+Driver::doCallbacksArray<epicsInt16>(DeviceVariable const &var,
+                                     Array<epicsInt16> &value,
+                                     asynStatus status, int alarmStatus,
+                                     int alarmSeverity);
+template AUTOPARAMDRIVER_API asynStatus epicsStdCall
+Driver::doCallbacksArray<epicsInt32>(DeviceVariable const &var,
+                                     Array<epicsInt32> &value,
+                                     asynStatus status, int alarmStatus,
+                                     int alarmSeverity);
+template AUTOPARAMDRIVER_API asynStatus epicsStdCall
+Driver::doCallbacksArray<epicsInt64>(DeviceVariable const &var,
+                                     Array<epicsInt64> &value,
+                                     asynStatus status, int alarmStatus,
+                                     int alarmSeverity);
+template AUTOPARAMDRIVER_API asynStatus epicsStdCall
+Driver::doCallbacksArray<epicsFloat32>(DeviceVariable const &var,
+                                       Array<epicsFloat32> &value,
+                                       asynStatus status, int alarmStatus,
+                                       int alarmSeverity);
+template AUTOPARAMDRIVER_API asynStatus epicsStdCall
+Driver::doCallbacksArray<epicsFloat64>(DeviceVariable const &var,
+                                       Array<epicsFloat64> &value,
+                                       asynStatus status, int alarmStatus,
+                                       int alarmSeverity);
 
 template <typename T>
 asynStatus Driver::setParam(DeviceVariable const &var, T value,
@@ -692,29 +715,26 @@ asynStatus Driver::setParam(DeviceVariable const &var, epicsUInt32 value,
     return setUIntDigitalParam(var.asynIndex(), value, mask);
 }
 
-template epicsShareFunc asynStatus Driver::setParam<epicsInt32>(DeviceVariable const &var,
-                                                 epicsInt32 value,
-                                                 asynStatus status,
-                                                 int alarmStatus,
-                                                 int alarmSeverity);
-template epicsShareFunc asynStatus Driver::setParam<epicsInt64>(DeviceVariable const &var,
-                                                 epicsInt64 value,
-                                                 asynStatus status,
-                                                 int alarmStatus,
-                                                 int alarmSeverity);
-template epicsShareFunc asynStatus Driver::setParam<epicsFloat64>(DeviceVariable const &var,
-                                                   epicsFloat64 value,
-                                                   asynStatus status,
-                                                   int alarmStatus,
-                                                   int alarmSeverity);
-template epicsShareFunc asynStatus Driver::setParam<Octet>(DeviceVariable const &var,
-                                            Octet value, asynStatus status,
-                                            int alarmStatus, int alarmSeverity);
+template AUTOPARAMDRIVER_API asynStatus epicsStdCall
+Driver::setParam<epicsInt32>(DeviceVariable const &var, epicsInt32 value,
+                             asynStatus status, int alarmStatus,
+                             int alarmSeverity);
+template AUTOPARAMDRIVER_API asynStatus epicsStdCall
+Driver::setParam<epicsInt64>(DeviceVariable const &var, epicsInt64 value,
+                             asynStatus status, int alarmStatus,
+                             int alarmSeverity);
+template AUTOPARAMDRIVER_API asynStatus epicsStdCall
+Driver::setParam<epicsFloat64>(DeviceVariable const &var, epicsFloat64 value,
+                               asynStatus status, int alarmStatus,
+                               int alarmSeverity);
+template AUTOPARAMDRIVER_API asynStatus epicsStdCall
+Driver::setParam<Octet>(DeviceVariable const &var, Octet value,
+                        asynStatus status, int alarmStatus, int alarmSeverity);
 
-template <> epicsShareFunc
-asynStatus Driver::setParam<epicsUInt32>(DeviceVariable const &var,
-                                         epicsUInt32 value, asynStatus status,
-                                         int alarmStatus, int alarmSeverity) {
+template <>
+AUTOPARAMDRIVER_API asynStatus epicsStdCall Driver::setParam<epicsUInt32>(
+    DeviceVariable const &var, epicsUInt32 value, asynStatus status,
+    int alarmStatus, int alarmSeverity) {
     return setParam(var, value, 0xffffffff, status, alarmStatus, alarmSeverity);
 }
 
@@ -722,20 +742,13 @@ template <typename T>
 asynStatus Driver::registerInterrupt(void *drvPvt, asynUser *pasynUser,
                                      void *callback, void *userPvt,
                                      void **registrarPvt) {
+    Driver *self = static_cast<Driver *>(drvPvt);
+    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
 
     // I hate doing type erasure like this, but there aren't sane options ...
     typedef asynStatus (*RegisterIntrFunc)(void *drvPvt, asynUser *pasynUser,
                                            void *callback, void *userPvt,
                                            void **registrarPvt);
-    if (drvPvt != g_driver) {
-        RegisterIntrFunc original = reinterpret_cast<RegisterIntrFunc>(
-            g_driver->m_originalIntrRegister.at(AsynType<T>::value).first);        
-        return original(drvPvt, pasynUser, callback, userPvt, registrarPvt);
-    }
-
-    Driver *self = static_cast<Driver *>(drvPvt);
-    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
-
     RegisterIntrFunc original = reinterpret_cast<RegisterIntrFunc>(
         self->m_originalIntrRegister.at(AsynType<T>::value).first);
     asynStatus status =
@@ -775,20 +788,12 @@ asynStatus Driver::registerInterrupt(void *drvPvt, asynUser *pasynUser,
 template <typename T>
 asynStatus Driver::cancelInterrupt(void *drvPvt, asynUser *pasynUser,
                                    void *registrarPvt) {
+    Driver *self = static_cast<Driver *>(drvPvt);
+    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
 
     // I hate doing type erasure like this, but there aren't sane options ...
     typedef asynStatus (*CancelIntrFunc)(void *drvPvt, asynUser *pasynUser,
                                          void *registrarPvt);
-
-    if (drvPvt != g_driver) {
-        CancelIntrFunc original = reinterpret_cast<CancelIntrFunc>(
-            g_driver->m_originalIntrRegister.at(AsynType<T>::value).second);
-        return original(drvPvt, pasynUser, registrarPvt);
-    }
-
-    Driver *self = static_cast<Driver *>(drvPvt);
-    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
-
     CancelIntrFunc original = reinterpret_cast<CancelIntrFunc>(
         self->m_originalIntrRegister.at(AsynType<T>::value).second);
     asynStatus status = original(drvPvt, pasynUser, registrarPvt);
@@ -837,21 +842,14 @@ asynStatus Driver::registerInterruptDigital(void *drvPvt, asynUser *pasynUser,
                                             void *callback, void *userPvt,
                                             epicsUInt32 mask,
                                             void **registrarPvt) {
+    typedef epicsUInt32 T;
+    Driver *self = static_cast<Driver *>(drvPvt);
+    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
+
     // UInt32Digital has a signature different from other registrars.
     typedef asynStatus (*RegisterIntrFunc)(
         void *drvPvt, asynUser *pasynUser, void *callback, void *userPvt,
         epicsUInt32 mask, void **registrarPvt);
-    typedef epicsUInt32 T;
-
-    if (drvPvt != g_driver) {
-        RegisterIntrFunc original = reinterpret_cast<RegisterIntrFunc>(
-            g_driver->m_originalIntrRegister.at(AsynType<T>::value).first);
-        return original(drvPvt, pasynUser, callback, userPvt, mask, registrarPvt);
-    }
-
-    Driver *self = static_cast<Driver *>(drvPvt);
-    DeviceVariable *var = self->deviceVariableFromUser(pasynUser);
-
     RegisterIntrFunc original = reinterpret_cast<RegisterIntrFunc>(
         self->m_originalIntrRegister.at(AsynType<T>::value).first);
     asynStatus status =
